@@ -1,0 +1,99 @@
+#!/bin/bash
+# omarchy-all-backgrounds: run again while the picker is open to cycle
+# every theme's backgrounds → ~/Backgrounds (if it has media) → close.
+# Usage: omarchy-all-backgrounds [folder]   (default folder: ~/Backgrounds)
+
+state=${XDG_RUNTIME_DIR:-/tmp}/omarchy-all-backgrounds
+home_dir=${1:-$HOME/Backgrounds}  # optional arg: your own backgrounds folder
+read -r owner mode 2>/dev/null <"$state"
+
+has_home_media() {
+  [[ -n $(find -L "$home_dir" -maxdepth 1 -type f -iregex '.*\.\(jpe?g\|png\|gif\|bmp\|webp\|mp4\|m4v\|mov\|webm\|mkv\|avi\)' -print -quit 2>/dev/null) ]]
+}
+
+if [[ -n $owner ]] && kill -0 "$owner" 2>/dev/null; then
+  [[ $mode == all ]] && has_home_media && mode=home || mode=close
+  if [[ $mode == close ]]; then
+    omarchy-shell image-selector cancel "" >/dev/null
+    exit 0
+  fi
+else
+  mode=all
+fi
+
+echo "$$ $mode" >"$state"
+
+# Building rows and thumbnails can take a while on first open: show an OSD until the picker is up.
+picker_up() { hyprctl layers -j | grep -q '"omarchy-image-selector"'; }
+
+# Close any open picker first (ours or the stock one), so the loading OSD shows instead of a stale view.
+omarchy-shell image-selector cancel "" >/dev/null
+for _ in {1..20}; do
+  picker_up || break
+  sleep 0.05
+done
+show_loading() {
+  sleep 0.3
+  picker_up && return
+  omarchy osd -i 󰋩 -m "$1" -d 60000
+  for _ in {1..600}; do
+    picker_up && break
+    sleep 0.1
+  done
+  omarchy-shell osd close >/dev/null
+}
+
+current_background=$(readlink -f "$HOME/.local/state/omarchy/current/background" 2>/dev/null)
+
+case $mode in
+all)
+  show_loading "Loading backgrounds…" &
+  shopt -s nullglob
+  dirs=(/usr/share/omarchy/themes/*/backgrounds "$HOME"/.config/omarchy/themes/*/backgrounds "$HOME"/.config/omarchy/backgrounds/*/)
+  dirs=("${dirs[@]%/}")
+
+  # One dir of "<theme> · <n>" symlinks (the picker label shows the name), content duplicates dropped (md5 only for same-size files).
+  all_dir=${XDG_CACHE_HOME:-$HOME/.cache}/omarchy-all-backgrounds
+  list=$(for dir in "${dirs[@]}"; do
+      theme=${dir%/backgrounds}; theme=${theme##*/}
+      find -L "$dir" -maxdepth 1 -type f -printf "%s\t$theme\t%f\t%p\n" | sort -t $'\t' -k3
+    done | awk -F '\t' '
+      { size[NR] = $1; theme[NR] = $2; ext[NR] = $3; path[NR] = $4; count[$1]++ }
+      END {
+        for (i = 1; i <= NR; i++) {
+          key = size[i]
+          if (count[key] > 1) {
+            p = path[i]; gsub(/'\''/, "'\''\\'\'''\''", p)
+            cmd = "md5sum < '\''" p "'\''"; cmd | getline key; close(cmd)
+          }
+          if (!seen[key]++) {
+            sub(/.*\./, "", ext[i])
+            print theme[i] " · " ++n[theme[i]] "." ext[i] "\t" path[i]
+          }
+        }
+      }' | sort)
+  if [[ $list != "$(cat "$all_dir.list" 2>/dev/null)" ]]; then
+    rm -rf "$all_dir" && mkdir -p "$all_dir"
+    while IFS=$'\t' read -r name path; do ln -s "$path" "$all_dir/$name"; done <<<"$list"
+    printf '%s' "$list" >"$all_dir.list"
+  fi
+  dirs=("$all_dir")
+  flags=(--filterable --lazy-thumbnails --show-labels)
+  ;;
+home)
+  show_loading "Loading backgrounds…" &
+  dirs=("$home_dir")
+  flags=(--filterable --lazy-thumbnails --show-labels)
+  ;;
+esac
+
+# Opening a newer picker releases this one with an empty selection.
+background=$(omarchy-menu-images "${flags[@]}" --selected "$current_background" "${dirs[@]}")
+# The picker never came up (error or empty list): drop the loading OSD.
+kill %1 2>/dev/null && omarchy-shell osd close >/dev/null
+
+# Clear state only if a later press hasn't taken it over.
+read -r owner _ 2>/dev/null <"$state"
+[[ $owner == "$$" ]] && rm -f "$state"
+
+[[ -n $background ]] && omarchy-theme-bg-set "$background"
