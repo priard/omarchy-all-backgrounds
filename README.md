@@ -7,7 +7,7 @@ There are two views:
 - **All themes** shows backgrounds from every theme: stock themes, themes you installed (`~/.config/omarchy/themes`), and your per-theme extras (`~/.config/omarchy/backgrounds/<theme>`). Duplicates are removed and each image is labelled `<theme> · <n>`.
 - **Your folder** shows `~/Backgrounds`, if it exists and contains images or videos.
 
-The picker remembers where you are. It opens in the view that holds your **current background**, with that background already selected. If you last picked something from `~/Backgrounds`, you land back there on that image; otherwise you land in *All themes*. Press the shortcut again while the picker is open to switch to the other view, and once more to close it.
+The picker remembers the **last view you looked at** (saved in `~/.local/state/omarchy-all-backgrounds/last-view`) and opens there next time. The first time, it opens *All themes*. Your current background is selected when it is in that view. Press the shortcut again while the picker is open to switch to the other view, and once more to close it.
 
 `Enter` or a click sets the background, `Esc` closes the picker, and typing filters by theme name (or by file name in your own folder).
 
@@ -56,7 +56,7 @@ This uses Omarchy's own mechanism: `omarchy plugin clone omarchy.image-picker` c
 - **All themes:** collects `backgrounds/` from `/usr/share/omarchy/themes/*`, `~/.config/omarchy/themes/*` and `~/.config/omarchy/backgrounds/*`. Duplicates are found by content: only files of the same size are hashed, so this stays fast. The result is a folder of `<theme> · <n>` symlinks in `~/.cache/omarchy-all-backgrounds`, which is rebuilt only when the set of backgrounds changes. That folder is passed to Omarchy's `omarchy-menu-images`.
 - **Thumbnails** are generated lazily in the background and cached by Omarchy (`~/.cache/omarchy/image-selector`). The first open can take a moment, mostly for video backgrounds. If the picker hasn't appeared after 0.3 s, an OSD shows *Loading backgrounds…* until it does.
 - **Setting** a background calls the stock `omarchy-theme-bg-set`, the same as the built-in switcher. Switching themes later resets the background to the new theme's default, as usual in Omarchy.
-- **Cycling:** while a picker is open, the running instance's PID and view are kept in `$XDG_RUNTIME_DIR/omarchy-all-backgrounds`. The next press reads it and switches to the next view or closes the picker.
+- **Cycling:** the last view is kept in `~/.local/state/omarchy-all-backgrounds/last-view`. While a picker is open, the running instance's PID and view are kept in `$XDG_RUNTIME_DIR/omarchy-all-backgrounds`. The next press reads it and switches to the next view or closes the picker.
 
 ## Uninstall
 

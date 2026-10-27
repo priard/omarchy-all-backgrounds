@@ -108,6 +108,7 @@ labels() {
 uninstall() {
   rm -f "$bin_dir/$name"
   rm -rf "${XDG_CACHE_HOME:-$HOME/.cache}/$name" "${XDG_CACHE_HOME:-$HOME/.cache}/$name.list"
+  rm -rf "${XDG_STATE_HOME:-$HOME/.local/state}/$name"
   remove_block "$bindings"
   [[ -f $menu ]] && sed -i '/"style.background-all"/d' "$menu"
   hyprctl reload >/dev/null 2>&1 || true

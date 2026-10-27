@@ -1,9 +1,10 @@
 #!/bin/bash
-# omarchy-all-backgrounds: opens the view holding the current background (~/Backgrounds or
-# every theme's), run again while the picker is open for the other view, then close.
+# omarchy-all-backgrounds: opens the last viewed view (every theme's backgrounds or ~/Backgrounds),
+# run again while the picker is open for the other view, then close.
 # Usage: omarchy-all-backgrounds [folder]   (default folder: ~/Backgrounds)
 
 state=${XDG_RUNTIME_DIR:-/tmp}/omarchy-all-backgrounds
+last_view_file=${XDG_STATE_HOME:-$HOME/.local/state}/omarchy-all-backgrounds/last-view
 home_dir=${1:-$HOME/Backgrounds}  # optional arg: your own backgrounds folder
 read -r owner mode first 2>/dev/null <"$state"
 current_background=$(readlink -f "$HOME/.local/state/omarchy/current/background" 2>/dev/null)
@@ -22,9 +23,8 @@ if [[ -n $owner ]] && kill -0 "$owner" 2>/dev/null; then
     exit 0
   fi
 else
-  # Start where the current background lives, so it comes up selected.
-  home_real=$(readlink -f "$home_dir" 2>/dev/null)
-  if [[ -n $home_real && ${current_background%/*} == "$home_real" ]] && has_home_media; then
+  # Reopen the last viewed view; the current background is selected when it is in it.
+  if [[ $(cat "$last_view_file" 2>/dev/null) == home ]] && has_home_media; then
     mode=home
   else
     mode=all
@@ -33,6 +33,7 @@ else
 fi
 
 echo "$$ $mode $first" >"$state"
+mkdir -p "${last_view_file%/*}" && echo "$mode" >"$last_view_file"
 
 # Building rows and thumbnails can take a while on first open: show an OSD until the picker is up.
 picker_up() { hyprctl layers -j | grep -q '"omarchy-image-selector"'; }
