@@ -15,13 +15,16 @@ bin_dir=$HOME/.local/bin
 bindings=$HOME/.config/hypr/bindings.lua
 menu=$HOME/.config/omarchy/extensions/omarchy-menu.jsonc
 plugins=$HOME/.config/omarchy/plugins
-src_dir=$(cd "$(dirname "${BASH_SOURCE[0]:-.}")" && pwd)
+# Only a script run from a file has a checkout next to it; under `curl | bash` this stays
+# empty, so files in the current directory are never picked up instead of the download.
+src_dir=""
+[[ -n ${BASH_SOURCE[0]:-} && -f ${BASH_SOURCE[0]} ]] && src_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 
 die() { echo "$name: $*" >&2; exit 1; }
 
 # Use files next to this script (a git checkout), otherwise download them.
 fetch() {
-  if [[ -f $src_dir/$1 && -f $src_dir/install.sh ]]; then
+  if [[ -n $src_dir && -f $src_dir/$1 ]]; then
     cat "$src_dir/$1"
   else
     curl -fsSL "$raw/$1"
@@ -45,10 +48,13 @@ remove_block() {
 
 bind() {
   local keys=${1:-SUPER + CTRL + ALT + SPACE} dir=${2:-}
+  # Both end up inside a Lua string that Hyprland runs through a shell: allow only safe text.
+  [[ $keys =~ ^[A-Za-z0-9_+\ ]+$ ]] || die "keys may only contain letters, digits, _, + and spaces"
+  [[ -z $dir || ! $dir =~ [\'\"\\\$\`[:cntrl:]] ]] || die "folder path may not contain quotes, backslashes, \$, \` or control characters"
   [[ -x $bin_dir/$name ]] || install_cmd
   [[ -f $bindings ]] || die "$bindings not found"
   local cmd=$name
-  [[ -n $dir ]] && cmd+=" $(printf '%q' "$dir")"
+  [[ -n $dir ]] && cmd+=" '$dir'"
   remove_block "$bindings"
   printf '%s\n' "-- BEGIN $name" \
     "o.bind(\"$keys\", \"All backgrounds\", \"$cmd\")" \
@@ -107,7 +113,7 @@ labels() {
 
 uninstall() {
   rm -f "$bin_dir/$name"
-  rm -rf "${XDG_CACHE_HOME:-$HOME/.cache}/$name" "${XDG_CACHE_HOME:-$HOME/.cache}/$name.list"
+  rm -rf "${XDG_CACHE_HOME:-$HOME/.cache}/$name" "${XDG_CACHE_HOME:-$HOME/.cache}/$name.list" "${XDG_RUNTIME_DIR:-$HOME/.cache}/$name.run"
   rm -rf "${XDG_STATE_HOME:-$HOME/.local/state}/$name"
   remove_block "$bindings"
   [[ -f $menu ]] && sed -i '/"style.background-all"/d' "$menu"

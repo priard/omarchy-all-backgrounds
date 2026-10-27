@@ -3,7 +3,8 @@
 # run again while the picker is open for the other view, then close.
 # Usage: omarchy-all-backgrounds [folder]   (default folder: ~/Backgrounds)
 
-state=${XDG_RUNTIME_DIR:-/tmp}/omarchy-all-backgrounds
+# Never a shared /tmp path: another user could plant or redirect it.
+state=${XDG_RUNTIME_DIR:-$HOME/.cache}/omarchy-all-backgrounds.run
 last_view_file=${XDG_STATE_HOME:-$HOME/.local/state}/omarchy-all-backgrounds/last-view
 home_dir=${1:-$HOME/Backgrounds}  # optional arg: your own backgrounds folder
 read -r owner mode first 2>/dev/null <"$state"
@@ -64,13 +65,18 @@ all)
 
   # One dir of "<theme> · <n>" symlinks (the picker label shows the name), content duplicates dropped (md5 only for same-size files).
   all_dir=${XDG_CACHE_HOME:-$HOME/.cache}/omarchy-all-backgrounds
+  # Paths with a tab or newline are skipped: they could forge records in this tab/line format.
   list=$(for dir in "${dirs[@]}"; do
-      theme=${dir%/backgrounds}; theme=${theme##*/}
-      find -L "$dir" -maxdepth 1 -type f -printf "%s\t$theme\t%f\t%p\n" | sort -t $'\t' -k3
+      find -L "$dir" -maxdepth 1 -type f ! -path $'*\n*' ! -path $'*\t*' -printf '%s\t%h\t%f\t%p\n' | sort -t $'\t' -k3
     done | awk -F '\t' '
-      { size[NR] = $1; theme[NR] = $2; ext[NR] = $3; path[NR] = $4; count[$1]++ }
+      NF != 4 { next }
+      {
+        theme[NR] = $2; sub(/\/backgrounds$/, "", theme[NR]); sub(/.*\//, "", theme[NR])
+        size[NR] = $1; ext[NR] = $3; path[NR] = $4; count[$1]++
+      }
       END {
         for (i = 1; i <= NR; i++) {
+          if (!(i in path)) continue
           key = size[i]
           if (count[key] > 1) {
             p = path[i]; gsub(/'\''/, "'\''\\'\'''\''", p)

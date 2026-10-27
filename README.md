@@ -58,6 +58,13 @@ This uses Omarchy's own mechanism: `omarchy plugin clone omarchy.image-picker` c
 - **Setting** a background calls the stock `omarchy-theme-bg-set`, the same as the built-in switcher. Switching themes later resets the background to the new theme's default, as usual in Omarchy.
 - **Cycling:** the last view is kept in `~/.local/state/omarchy-all-backgrounds/last-view`. While a picker is open, the running instance's PID and view are kept in `$XDG_RUNTIME_DIR/omarchy-all-backgrounds`. The next press reads it and switches to the next view or closes the picker.
 
+## Security notes
+
+- `curl … | bash` runs whatever is on `main` at that moment. To check first, download `install.sh`, read it, and run it, or clone the repo and use `./install.sh`. The installer only writes to your home directory and never uses `sudo`.
+- Every installed theme's media gets thumbnailed (vips / ffmpegthumbnailer), just like the stock theme picker does for theme previews. Install themes only from sources you trust.
+- File and folder names are treated as data. Names containing a tab or newline are skipped, and `bind` accepts only plain key names and folder paths without quotes, `$`, backticks or backslashes.
+- The `labels` patch only changes colors and layout in the picker's QML. It runs no commands.
+
 ## Uninstall
 
 ```bash
