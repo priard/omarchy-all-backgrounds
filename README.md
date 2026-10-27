@@ -2,12 +2,16 @@
 
 Browse and set **any background from any installed Omarchy theme**, all in one picker, plus your own `~/Backgrounds` folder. It uses Omarchy's own image picker, so it looks and works like the stock background switcher (`Super + Ctrl + Space`). The stock switcher stays as it is.
 
+![All themes view: backgrounds from every installed theme, labelled with the theme name](screenshots/all.jpg)
+
 There are two views:
 
 - **All themes** shows backgrounds from every theme: stock themes, themes you installed (`~/.config/omarchy/themes`), and your per-theme extras (`~/.config/omarchy/backgrounds/<theme>`). Duplicates are removed and each image is labelled `<theme> · <n>`.
 - **Your folder** shows `~/Backgrounds`, if it exists and contains images or videos.
 
 The picker remembers the **last view you looked at** (saved in `~/.local/state/omarchy-all-backgrounds/last-view`) and opens there next time. The first time, it opens *All themes*. Your current background is selected when it is in that view.
+
+![Your own folder view: ~/Backgrounds with the current background selected](screenshots/home.jpg)
 
 | Key | Action |
 |-----|--------|
