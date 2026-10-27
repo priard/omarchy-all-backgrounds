@@ -78,6 +78,42 @@ all_themes_dir() {
   echo "$all_dir"
 }
 
+# Adds each still image's own WIDTHxHEIGHT as a third column, from one
+# vipsheader run, so the patched picker can show it (Omarchy 4.5's
+# omarchy-menu-images has no --sizes yet). Kept while the rows stay the same.
+with_sizes() {
+  local rows=$1 cache=${XDG_CACHE_HOME:-$HOME/.cache}/omarchy-all-backgrounds.sizes
+  local key path thumbnail line out="" images=()
+  local -A size=()
+
+  key=$(printf '%s' "$rows" | md5sum)
+  key=${key%% *}
+  if [[ $(cat "$cache.key" 2>/dev/null) == "$key" ]]; then
+    cat "$cache.rows"
+    return
+  fi
+
+  while IFS=$'\t' read -r path _; do
+    [[ -n $path && ! ${path,,} =~ \.(mp4|m4v|mov|webm|mkv|avi)$ ]] && images+=("$path")
+  done <<<"$rows"
+  if (( ${#images[@]} > 0 )); then
+    while IFS= read -r line; do
+      [[ $line =~ ^(.*):\ ([0-9]+)x([0-9]+)\  ]] && size[${BASH_REMATCH[1]}]="${BASH_REMATCH[2]}x${BASH_REMATCH[3]}"
+    done < <(vipsheader "${images[@]}" 2>/dev/null)
+  fi
+
+  while IFS=$'\t' read -r path thumbnail; do
+    [[ -n $path ]] || continue
+    line="$path"$'\t'"$thumbnail"
+    [[ -n ${size[$path]:-} ]] && line+=$'\t'"${size[$path]}"
+    out+="$line"$'\n'
+  done <<<"$rows"
+
+  printf '%s' "$out" >"$cache.rows"
+  printf '%s' "$key" >"$cache.key"
+  printf '%s' "$out"
+}
+
 # Reopen the last viewed view.
 mode=all
 [[ $(cat "$last_view_file" 2>/dev/null) == home ]] && has_home_media && mode=home
@@ -100,6 +136,7 @@ while :; do
   has_home_media && views="$marker:$title"
 
   rows=$(omarchy-menu-images --lazy-thumbnails --print-rows "$dir")
+  rows=$(with_sizes "$rows")
   selected=$(find -L "$dir" -maxdepth 1 -type f -samefile "$current_background" -print -quit 2>/dev/null)
 
   : >"$selection_file"

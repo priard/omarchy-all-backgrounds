@@ -99,24 +99,28 @@ picker() {
     fresh=true
   fi
   [[ -n $dir ]] || die "could not clone omarchy.image-picker"
-  if grep -qF "\"$name:\" + direction" "$dir/ImagePicker.qml"; then
+  if grep -q "component LabelPill" "$dir/ImagePicker.qml" && grep -q "image.size" "$dir/ImagePickerModel.js"; then
     echo "Picker patch already applied in $dir"
     return
   fi
-  # An older patch of ours (labels only): start again from the stock file, keeping a backup.
-  local upgrade=false
+  # An older patch of ours: start again from the stock files, keeping backups.
+  local upgrade=false file
   if grep -q "$name" "$dir/ImagePicker.qml"; then
     upgrade=true
-    cp "$dir/ImagePicker.qml" "$dir/ImagePicker.qml.bak"
-    cp "${OMARCHY_PATH:-/usr/share/omarchy}/shell/plugins/image-picker/ImagePicker.qml" "$dir/ImagePicker.qml"
+    for file in ImagePicker.qml ImagePickerModel.js; do
+      cp "$dir/$file" "$dir/$file.bak"
+      cp "${OMARCHY_PATH:-/usr/share/omarchy}/shell/plugins/image-picker/$file" "$dir/$file"
+    done
   fi
   if ! fetch picker.patch | patch -d "$dir" -p1 --forward --no-backup-if-mismatch -s; then
     $fresh && omarchy plugin remove "$(basename "$dir")" --yes >/dev/null
-    $upgrade && mv -f "$dir/ImagePicker.qml.bak" "$dir/ImagePicker.qml"
+    if $upgrade; then
+      for file in ImagePicker.qml ImagePickerModel.js; do mv -f "$dir/$file.bak" "$dir/$file"; done
+    fi
     die "patch did not apply to this Omarchy version; nothing was changed"
   fi
   omarchy restart shell >/dev/null 2>&1 || true
-  echo "Patched $dir (Up/Down switch views, readable labels)"
+  echo "Patched $dir (Up/Down switch views, readable labels, resolution)"
 }
 
 uninstall() {
