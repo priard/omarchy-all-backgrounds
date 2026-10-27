@@ -81,7 +81,7 @@
 +          textFormat: Text.PlainText
 +          visible: root.viewTitle !== ""
 +          anchors.bottom: carousel.top
-+          anchors.bottomMargin: Style.space(4)
++          anchors.bottomMargin: Style.space(16)
 +          anchors.horizontalCenter: carousel.horizontalCenter
 +          text: "↑  " + root.viewTitle + "  ↓"
 +          color: root.labelText
