@@ -1,54 +1,38 @@
 #!/bin/bash
-# omarchy-all-backgrounds: opens the last viewed view (every theme's backgrounds or ~/Backgrounds),
-# run again while the picker is open for the other view, then close.
+# omarchy-all-backgrounds: opens the last viewed view (every theme's backgrounds or ~/Backgrounds);
+# Up/Down in the picker switch views (needs the patched picker), running it again closes the picker.
 # Usage: omarchy-all-backgrounds [folder]   (default folder: ~/Backgrounds)
 
 # Never a shared /tmp path: another user could plant or redirect it.
 state=${XDG_RUNTIME_DIR:-$HOME/.cache}/omarchy-all-backgrounds.run
 last_view_file=${XDG_STATE_HOME:-$HOME/.local/state}/omarchy-all-backgrounds/last-view
 home_dir=${1:-$HOME/Backgrounds}  # optional arg: your own backgrounds folder
-read -r owner mode first 2>/dev/null <"$state"
+marker=omarchy-all-backgrounds
+
+# Second press while our picker is open: close it.
+read -r owner 2>/dev/null <"$state"
+if [[ -n $owner ]] && kill -0 "$owner" 2>/dev/null; then
+  omarchy-shell image-selector cancel "" >/dev/null
+  exit 0
+fi
+echo "$$" >"$state"
+
+selection_file=$(mktemp)
+done_file=$(mktemp -u)
+trap 'rm -f "$selection_file" "$done_file"; read -r owner 2>/dev/null <"$state"; [[ $owner == "$$" ]] && rm -f "$state"' EXIT
+
 current_background=$(readlink -f "$HOME/.local/state/omarchy/current/background" 2>/dev/null)
 
 has_home_media() {
   [[ -n $(find -L "$home_dir" -maxdepth 1 -type f -iregex '.*\.\(jpe?g\|png\|gif\|bmp\|webp\|mp4\|m4v\|mov\|webm\|mkv\|avi\)' -print -quit 2>/dev/null) ]]
 }
 
-if [[ -n $owner ]] && kill -0 "$owner" 2>/dev/null; then
-  if [[ $mode == "$first" && $mode == home ]]; then
-    mode=all
-  elif [[ $mode == "$first" ]] && has_home_media; then
-    mode=home
-  else
-    omarchy-shell image-selector cancel "" >/dev/null
-    exit 0
-  fi
-else
-  # Reopen the last viewed view; the current background is selected when it is in it.
-  if [[ $(cat "$last_view_file" 2>/dev/null) == home ]] && has_home_media; then
-    mode=home
-  else
-    mode=all
-  fi
-  first=$mode
-fi
-
-echo "$$ $mode $first" >"$state"
-mkdir -p "${last_view_file%/*}" && echo "$mode" >"$last_view_file"
-
 # Building rows and thumbnails can take a while on first open: show an OSD until the picker is up.
 picker_up() { hyprctl layers -j | grep -q '"omarchy-image-selector"'; }
-
-# Close any open picker first (ours or the stock one), so the loading OSD shows instead of a stale view.
-omarchy-shell image-selector cancel "" >/dev/null
-for _ in {1..20}; do
-  picker_up || break
-  sleep 0.05
-done
 show_loading() {
   sleep 0.3
   picker_up && return
-  omarchy osd -i 󰋩 -m "$1" -d 60000
+  omarchy osd -i 󰋩 -m "Loading backgrounds…" -d 60000
   for _ in {1..600}; do
     picker_up && break
     sleep 0.1
@@ -56,15 +40,13 @@ show_loading() {
   omarchy-shell osd close >/dev/null
 }
 
-case $mode in
-all)
-  show_loading "Loading backgrounds…" &
+# Echo the folder holding every theme's backgrounds: "<theme> · <n>" symlinks (the picker label shows
+# the name), content duplicates dropped (md5 only for same-size files).
+all_themes_dir() {
+  local dirs list all_dir=${XDG_CACHE_HOME:-$HOME/.cache}/omarchy-all-backgrounds
   shopt -s nullglob
   dirs=(/usr/share/omarchy/themes/*/backgrounds "$HOME"/.config/omarchy/themes/*/backgrounds "$HOME"/.config/omarchy/backgrounds/*/)
   dirs=("${dirs[@]%/}")
-
-  # One dir of "<theme> · <n>" symlinks (the picker label shows the name), content duplicates dropped (md5 only for same-size files).
-  all_dir=${XDG_CACHE_HOME:-$HOME/.cache}/omarchy-all-backgrounds
   # Paths with a tab or newline are skipped: they could forge records in this tab/line format.
   list=$(for dir in "${dirs[@]}"; do
       find -L "$dir" -maxdepth 1 -type f ! -path $'*\n*' ! -path $'*\t*' -printf '%s\t%h\t%f\t%p\n' | sort -t $'\t' -k3
@@ -93,23 +75,49 @@ all)
     while IFS=$'\t' read -r name path; do ln -s "$path" "$all_dir/$name"; done <<<"$list"
     printf '%s' "$list" >"$all_dir.list"
   fi
-  dirs=("$all_dir")
-  flags=(--filterable --lazy-thumbnails --show-labels)
-  ;;
-home)
-  show_loading "Loading backgrounds…" &
-  dirs=("$home_dir")
-  flags=(--filterable --lazy-thumbnails --show-labels)
-  ;;
-esac
+  echo "$all_dir"
+}
 
-# Opening a newer picker releases this one with an empty selection.
-background=$(omarchy-menu-images "${flags[@]}" --selected "$current_background" "${dirs[@]}")
-# The picker never came up (error or empty list): drop the loading OSD.
-kill %1 2>/dev/null && omarchy-shell osd close >/dev/null
+# Reopen the last viewed view.
+mode=all
+[[ $(cat "$last_view_file" 2>/dev/null) == home ]] && has_home_media && mode=home
 
-# Clear state only if a later press hasn't taken it over.
-read -r owner _ 2>/dev/null <"$state"
-[[ $owner == "$$" ]] && rm -f "$state"
+# Close any open picker first (e.g. the stock one), so the loading OSD shows instead of a stale view.
+omarchy-shell image-selector cancel "" >/dev/null
 
-[[ -n $background ]] && omarchy-theme-bg-set "$background"
+while :; do
+  mkdir -p "${last_view_file%/*}" && echo "$mode" >"$last_view_file"
+  show_loading &
+  loader=$!
+
+  if [[ $mode == home ]]; then
+    dir=$home_dir title=${home_dir/#$HOME/\~}
+  else
+    dir=$(all_themes_dir) title="All themes"
+  fi
+  # The picker only offers Up/Down when there is another view to switch to.
+  views=""
+  has_home_media && views="$marker:$title"
+
+  rows=$(omarchy-menu-images --lazy-thumbnails --print-rows "$dir")
+  selected=$(find -L "$dir" -maxdepth 1 -type f -samefile "$current_background" -print -quit 2>/dev/null)
+
+  : >"$selection_file"
+  rm -f "$done_file"
+  # omarchy-menu-images cannot pass a view title, so open the picker over the shell IPC directly.
+  if [[ $(omarchy-shell image-selector open "$views" "$(printf '%s' "$rows" | base64 -w 0)" \
+      "$selected" "$selection_file" "$done_file" true true) != ok ]]; then
+    kill "$loader" 2>/dev/null && omarchy-shell osd close >/dev/null
+    echo "omarchy-all-backgrounds: image selector did not accept the request" >&2
+    exit 1
+  fi
+
+  while [[ ! -e $done_file ]]; do sleep 0.05; done
+  background=$(<"$selection_file")
+
+  case $background in
+    "$marker":*) [[ $mode == home ]] && mode=all || mode=home ;;
+    "") exit 0 ;;
+    *) omarchy-theme-bg-set "$background"; exit 0 ;;
+  esac
+done

@@ -1,0 +1,155 @@
+--- a/ImagePicker.qml
++++ b/ImagePicker.qml
+@@ -25,6 +25,9 @@
+   property bool imagesLoaded: false
+   property bool opened: false
+   property bool showLabels: false
++  // omarchy-all-backgrounds: set when opened with imageDirs "omarchy-all-backgrounds:<view title>";
++  // Up/Down then answer "omarchy-all-backgrounds:prev|next" so the script can switch views.
++  property string viewTitle: ""
+   property bool filterable: false
+   property bool layoutSettled: false
+   property bool neighborImagesEnabled: false
+@@ -55,6 +58,21 @@
+   property color foreground: Commons.Color.imagePicker.text
+   property color selectedBorder: Commons.Color.imagePicker.selectedBorder
+   property color unselectedBorder: Commons.Color.imagePicker.unselectedBorder
++  // omarchy-all-backgrounds: labels sit on a pill of the theme background; the theme text color is kept
++  // only when it reaches WCAG AA (4.5:1) on it, otherwise black or white.
++  property color labelPill: Qt.rgba(dimColor.r, dimColor.g, dimColor.b, 0.9)
++  property color labelText: contrast(foreground, dimColor) >= 4.5 ? foreground
++    : (contrast(Qt.rgba(0, 0, 0, 1), dimColor) >= contrast(Qt.rgba(1, 1, 1, 1), dimColor) ? "black" : "white")
++
++  function luminance(c) {
++    function lin(v) { return v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4) }
++    return 0.2126 * lin(c.r) + 0.7152 * lin(c.g) + 0.0722 * lin(c.b)
++  }
++
++  function contrast(a, b) {
++    var la = luminance(a), lb = luminance(b)
++    return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05)
++  }
+   property int expandedWidth: 768
+   property int expandedHeight: 475
+   property int sliceWidth: 108
+@@ -209,6 +227,14 @@
+       return
+     }
+ 
++    respond(path)
++  }
++
++  function switchView(direction) {
++    if (viewTitle && selectionFile) respond("omarchy-all-backgrounds:" + direction)
++  }
++
++  function respond(value) {
+     var activeSelectionFile = selectionFile
+     var activeDoneFile = doneFile
+     applySerial = requestSerial
+@@ -216,7 +242,7 @@
+     selectionFile = ""
+     doneFile = ""
+ 
+-    applyProc.command = ["bash", "-c", "printf '%s\\n' " + Util.shellQuote(path) + " > " + Util.shellQuote(activeSelectionFile) + "; : > " + Util.shellQuote(activeDoneFile)]
++    applyProc.command = ["bash", "-c", "printf '%s\\n' " + Util.shellQuote(value) + " > " + Util.shellQuote(activeSelectionFile) + "; : > " + Util.shellQuote(activeDoneFile)]
+     applyProc.running = true
+   }
+ 
+@@ -279,6 +305,7 @@
+     themeOpenPending = false
+ 
+     imageDirs = nextImageDirs
++    viewTitle = String(nextImageDirs).indexOf("omarchy-all-backgrounds:") === 0 ? String(nextImageDirs).slice(24) : ""
+     imageRows = nextImageRows
+     selectedImage = nextSelectedImage
+     selectionFile = nextSelectionFile
+@@ -714,6 +741,9 @@
+             } else if (root.filterable && Util.editsFilter(event, root.filterText)) {
+               root.updateFilter(Util.editedFilter(event, root.filterText))
+               event.accepted = true
++            } else if (root.viewTitle && (event.key === Qt.Key_Up || event.key === Qt.Key_Down)) {
++              root.switchView(event.key === Qt.Key_Up ? "prev" : "next")
++              event.accepted = true
+             } else if (Util.readingKey(event) === Qt.Key_Left || (event.key === Qt.Key_Tab && event.modifiers & Qt.ShiftModifier) || event.key === Qt.Key_Backtab) {
+               root.selectAdjacent(-1)
+               event.accepted = true
+@@ -852,6 +882,28 @@
+         }
+ 
+         Text {
++          textFormat: Text.PlainText
++          visible: root.viewTitle !== ""
++          anchors.bottom: carousel.top
++          anchors.bottomMargin: Style.space(4)
++          anchors.horizontalCenter: carousel.horizontalCenter
++          text: "↑  " + root.viewTitle + "  ↓"
++          color: root.labelText
++          font.pixelSize: Style.font.heading
++          font.weight: Font.DemiBold
++
++          Rectangle {
++            z: -1
++            visible: parent.text !== ""
++            anchors.centerIn: parent
++            width: parent.contentWidth + Style.space(24)
++            height: parent.contentHeight + Style.space(8)
++            radius: height / 2
++            color: root.labelPill
++          }
++        }
++
++        Text {
+           id: selectedLabel
+           textFormat: Text.PlainText
+           visible: root.showLabels
+@@ -860,13 +912,21 @@
+           anchors.horizontalCenter: carousel.horizontalCenter
+           width: root.expandedWidth
+           text: root.currentLabel()
+-          color: root.foreground
+-          style: Text.Outline
+-          styleColor: Util.alpha(root.dimColor, 0.7)
++          color: root.labelText
+           font.pixelSize: Style.font.display
+           font.weight: Font.DemiBold
+           horizontalAlignment: Text.AlignHCenter
+           elide: Text.ElideRight
++
++          Rectangle {
++            z: -1
++            visible: parent.text !== ""
++            anchors.centerIn: parent
++            width: parent.contentWidth + Style.space(24)
++            height: parent.contentHeight + Style.space(8)
++            radius: height / 2
++            color: root.labelPill
++          }
+         }
+ 
+         Text {
+@@ -877,13 +937,20 @@
+           anchors.horizontalCenter: carousel.horizontalCenter
+           width: root.expandedWidth
+           text: root.filterText
+-          color: root.foreground
+-          opacity: 0.85
+-          style: Text.Outline
+-          styleColor: Util.alpha(root.dimColor, 0.7)
++          color: root.labelText
+           font.pixelSize: Style.font.title
+           horizontalAlignment: Text.AlignHCenter
+           elide: Text.ElideRight
++
++          Rectangle {
++            z: -1
++            visible: parent.text !== ""
++            anchors.centerIn: parent
++            width: parent.contentWidth + Style.space(24)
++            height: parent.contentHeight + Style.space(8)
++            radius: height / 2
++            color: root.labelPill
++          }
+         }
+     }
+ 

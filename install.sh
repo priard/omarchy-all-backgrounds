@@ -4,7 +4,7 @@
 #   install.sh                     install the command to ~/.local/bin
 #   install.sh bind [keys] [dir]   add a keybinding (default: SUPER + CTRL + ALT + SPACE)
 #   install.sh menu                add "All Backgrounds" to Omarchy menu → Style
-#   install.sh labels              readable labels: clone the image picker and patch it
+#   install.sh picker              patch a clone of the image picker: Up/Down switch views, readable labels
 #   install.sh uninstall           remove everything above
 
 set -euo pipefail
@@ -89,7 +89,7 @@ picker_clone() {
   return 0
 }
 
-labels() {
+picker() {
   local dir fresh=false
   command -v patch >/dev/null || die "needs patch: omarchy pkg add patch"
   dir=$(picker_clone)
@@ -99,16 +99,24 @@ labels() {
     fresh=true
   fi
   [[ -n $dir ]] || die "could not clone omarchy.image-picker"
-  if grep -q "$name" "$dir/ImagePicker.qml"; then
-    echo "Labels patch already applied in $dir"
+  if grep -qF "\"$name:\" + direction" "$dir/ImagePicker.qml"; then
+    echo "Picker patch already applied in $dir"
     return
   fi
-  if ! fetch image-picker-labels.patch | patch -d "$dir" -p1 --forward --no-backup-if-mismatch -s; then
+  # An older patch of ours (labels only): start again from the stock file, keeping a backup.
+  local upgrade=false
+  if grep -q "$name" "$dir/ImagePicker.qml"; then
+    upgrade=true
+    cp "$dir/ImagePicker.qml" "$dir/ImagePicker.qml.bak"
+    cp "${OMARCHY_PATH:-/usr/share/omarchy}/shell/plugins/image-picker/ImagePicker.qml" "$dir/ImagePicker.qml"
+  fi
+  if ! fetch picker.patch | patch -d "$dir" -p1 --forward --no-backup-if-mismatch -s; then
     $fresh && omarchy plugin remove "$(basename "$dir")" --yes >/dev/null
-    die "patch did not apply to this Omarchy version; the stock picker is unchanged"
+    $upgrade && mv -f "$dir/ImagePicker.qml.bak" "$dir/ImagePicker.qml"
+    die "patch did not apply to this Omarchy version; nothing was changed"
   fi
   omarchy restart shell >/dev/null 2>&1 || true
-  echo "Patched $dir (readable labels)"
+  echo "Patched $dir (Up/Down switch views, readable labels)"
 }
 
 uninstall() {
@@ -130,7 +138,7 @@ case ${1:-install} in
   install) install_cmd ;;
   bind) shift; bind "$@" ;;
   menu) add_menu ;;
-  labels) labels ;;
+  picker|labels) picker ;;
   uninstall) uninstall ;;
   *) sed -n '2,8p' "$0" 2>/dev/null || true; exit 1 ;;
 esac
