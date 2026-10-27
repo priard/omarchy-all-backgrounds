@@ -1,27 +1,38 @@
 #!/bin/bash
-# omarchy-all-backgrounds: run again while the picker is open to cycle
-# every theme's backgrounds → ~/Backgrounds (if it has media) → close.
+# omarchy-all-backgrounds: opens the view holding the current background (~/Backgrounds or
+# every theme's), run again while the picker is open for the other view, then close.
 # Usage: omarchy-all-backgrounds [folder]   (default folder: ~/Backgrounds)
 
 state=${XDG_RUNTIME_DIR:-/tmp}/omarchy-all-backgrounds
 home_dir=${1:-$HOME/Backgrounds}  # optional arg: your own backgrounds folder
-read -r owner mode 2>/dev/null <"$state"
+read -r owner mode first 2>/dev/null <"$state"
+current_background=$(readlink -f "$HOME/.local/state/omarchy/current/background" 2>/dev/null)
 
 has_home_media() {
   [[ -n $(find -L "$home_dir" -maxdepth 1 -type f -iregex '.*\.\(jpe?g\|png\|gif\|bmp\|webp\|mp4\|m4v\|mov\|webm\|mkv\|avi\)' -print -quit 2>/dev/null) ]]
 }
 
 if [[ -n $owner ]] && kill -0 "$owner" 2>/dev/null; then
-  [[ $mode == all ]] && has_home_media && mode=home || mode=close
-  if [[ $mode == close ]]; then
+  if [[ $mode == "$first" && $mode == home ]]; then
+    mode=all
+  elif [[ $mode == "$first" ]] && has_home_media; then
+    mode=home
+  else
     omarchy-shell image-selector cancel "" >/dev/null
     exit 0
   fi
 else
-  mode=all
+  # Start where the current background lives, so it comes up selected.
+  home_real=$(readlink -f "$home_dir" 2>/dev/null)
+  if [[ -n $home_real && ${current_background%/*} == "$home_real" ]] && has_home_media; then
+    mode=home
+  else
+    mode=all
+  fi
+  first=$mode
 fi
 
-echo "$$ $mode" >"$state"
+echo "$$ $mode $first" >"$state"
 
 # Building rows and thumbnails can take a while on first open: show an OSD until the picker is up.
 picker_up() { hyprctl layers -j | grep -q '"omarchy-image-selector"'; }
@@ -42,8 +53,6 @@ show_loading() {
   done
   omarchy-shell osd close >/dev/null
 }
-
-current_background=$(readlink -f "$HOME/.local/state/omarchy/current/background" 2>/dev/null)
 
 case $mode in
 all)
